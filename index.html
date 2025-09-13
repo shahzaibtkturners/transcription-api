@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transcription & Document Parsing API</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Chosen Palette: Paper & Ink -->
+    <!-- Application Structure Plan: The application is structured as a single-page marketing and documentation site with a sticky navigation header. This replaces the linear scroll of the README with a task-oriented flow. Users can jump directly to 'Features', 'Usage', or 'Deployment'. The core interaction is a tabbed interface for deployment instructions ('Local' vs. 'Compose') and copy-to-clipboard buttons for all code snippets. This structure was chosen because developers value efficiency; they can immediately find and copy the commands they need without unnecessary scrolling, dramatically improving usability over a standard Markdown file. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Core Features -> Goal: Inform/Organize -> Viz/Method: Icon-based feature cards (HTML/Tailwind) -> Interaction: Subtle hover effect -> Justification: More visually engaging and scannable than a bullet list.
+        - Report Info: Deployment Steps -> Goal: Instruct/Enable Action -> Viz/Method: Tabbed code viewers (HTML/JS) -> Interaction: User clicks tab to switch view, clicks button to copy code -> Justification: Reduces cognitive load by showing only relevant instructions; copy button streamlines developer workflow.
+        - Report Info: API Usage Example -> Goal: Instruct/Enable Action -> Viz/Method: Formatted code blocks (HTML/Tailwind) -> Interaction: Copy-to-clipboard button -> Justification: Enables quick testing of the API endpoint.
+        - Report Info: Supported File Types -> Goal: Inform -> Viz/Method: Styled HTML Table -> Interaction: None -> Justification: A table is the most effective format for presenting this categorical data clearly.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #fdfbf7;
+        color: #1a1a1a;
+      }
+      .code-block {
+        background-color: #1e293b;
+        color: #e2e8f0;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        position: relative;
+        overflow-x: auto;
+      }
+      .copy-btn {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        background-color: #334155;
+        color: #94a3b8;
+        border: none;
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        transition: background-color 0.2s;
+      }
+      .copy-btn:hover {
+        background-color: #475569;
+      }
+      .nav-link {
+        transition: color 0.2s;
+      }
+      .nav-link:hover {
+        color: #4338ca;
+      }
+      .active-tab {
+        background-color: #4f46e5;
+        color: white;
+      }
+      .inactive-tab {
+        background-color: #e0e7ff;
+        color: #4338ca;
+      }
+    </style>
+  </head>
+  <body class="antialiased">
+    <header
+      class="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200/50"
+    >
+      <nav
+        class="container mx-auto px-6 py-4 flex justify-between items-center"
+      >
+        <div class="text-xl font-bold text-gray-800">📑 Transcription API</div>
+        <div class="hidden md:flex items-center space-x-8">
+          <a href="#features" class="text-gray-600 nav-link font-medium"
+            >Features</a
+          >
+          <a href="#usage" class="text-gray-600 nav-link font-medium">Usage</a>
+          <a href="#deployment" class="text-gray-600 nav-link font-medium"
+            >Deployment</a
+          >
+          <a href="#contributing" class="text-gray-600 nav-link font-medium"
+            >Contribute</a
+          >
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section id="hero" class="py-20 md:py-32">
+        <div class="container mx-auto text-center px-6">
+          <h1
+            class="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-900 leading-tight"
+          >
+            Transcription & Document Parsing, Simplified.
+          </h1>
+          <p class="mt-4 max-w-2xl mx-auto text-lg md:text-xl text-gray-600">
+            A powerful FastAPI service to handle speech-to-text, document
+            parsing, and OCR all in one place. Upload any supported file and get
+            the extracted text back instantly.
+          </p>
+          <div class="mt-8 flex justify-center gap-4">
+            <a
+              href="#deployment"
+              class="bg-indigo-600 text-white font-semibold px-8 py-3 rounded-lg shadow-md hover:bg-indigo-700 transition-transform transform hover:scale-105"
+            >
+              Get Started
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="py-16 bg-white">
+        <div class="container mx-auto px-6">
+          <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold tracking-tight text-gray-900">
+              Core Features
+            </h2>
+            <p class="mt-2 text-lg text-gray-600">
+              Everything you need to process content from any source.
+            </p>
+          </div>
+          <div class="grid md:grid-cols-3 gap-8">
+            <div
+              class="p-8 border border-gray-200 rounded-xl shadow-sm hover:shadow-lg transition-shadow"
+            >
+              <span class="text-4xl">🎙️</span>
+              <h3 class="mt-4 text-xl font-semibold">
+                Audio/Video Transcription
+              </h3>
+              <p class="mt-2 text-gray-600">
+                High-quality speech-to-text using the blazing-fast
+                Faster-Whisper engine.
+              </p>
+            </div>
+            <div
+              class="p-8 border border-gray-200 rounded-xl shadow-sm hover:shadow-lg transition-shadow"
+            >
+              <span class="text-4xl">📑</span>
+              <h3 class="mt-4 text-xl font-semibold">Document Parsing</h3>
+              <p class="mt-2 text-gray-600">
+                Extracts text from `.pdf`, `.docx`, `.xlsx`, `.csv`, and `.txt`
+                files seamlessly.
+              </p>
+            </div>
+            <div
+              class="p-8 border border-gray-200 rounded-xl shadow-sm hover:shadow-lg transition-shadow"
+            >
+              <span class="text-4xl">🖼️</span>
+              <h3 class="mt-4 text-xl font-semibold">Image OCR</h3>
+              <p class="mt-2 text-gray-600">
+                Reads text from scanned images like `.png` or `.jpg` using
+                Tesseract.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="file-types" class="py-16">
+        <div class="container mx-auto px-6">
+          <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold tracking-tight text-gray-900">
+              Supported File Types
+            </h2>
+            <p class="mt-2 text-lg text-gray-600">
+              A wide range of formats are supported out-of-the-box.
+            </p>
+          </div>
+          <div class="max-w-3xl mx-auto overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead class="bg-gray-100">
+                <tr>
+                  <th class="p-4 font-semibold border-b">Category</th>
+                  <th class="p-4 font-semibold border-b">Formats</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white">
+                <tr>
+                  <td class="p-4 border-b font-medium">Audio / Video</td>
+                  <td class="p-4 border-b text-gray-600">
+                    <code>.mp3</code>, <code>.wav</code>, <code>.mp4</code>,
+                    <code>.m4a</code>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="p-4 border-b font-medium">Documents</td>
+                  <td class="p-4 border-b text-gray-600">
+                    <code>.pdf</code>, <code>.docx</code>, <code>.xlsx</code>,
+                    <code>.csv</code>, <code>.txt</code>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="p-4 border-b font-medium">Images (OCR)</td>
+                  <td class="p-4 border-b text-gray-600">
+                    <code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="deployment" class="py-16 bg-white">
+        <div class="container mx-auto px-6">
+          <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold tracking-tight text-gray-900">
+              Deploy Your Instance
+            </h2>
+            <p class="mt-2 text-lg text-gray-600">
+              Get the API running in minutes with Docker. Choose your preferred
+              method below.
+            </p>
+          </div>
+
+          <div class="max-w-4xl mx-auto">
+            <div class="flex justify-center mb-8 rounded-lg p-1 bg-indigo-100">
+              <button
+                id="local-tab"
+                class="deployment-tab active-tab px-6 py-2 w-1/2 rounded-md font-semibold transition"
+              >
+                Run Locally
+              </button>
+              <button
+                id="compose-tab"
+                class="deployment-tab inactive-tab px-6 py-2 w-1/2 rounded-md font-semibold transition"
+              >
+                Deploy with Compose
+              </button>
+            </div>
+
+            <div id="local-content" class="deployment-content">
+              <h3 class="text-xl font-semibold mb-2">Instructions</h3>
+              <p class="text-gray-600 mb-4">
+                Follow these steps to build and run the Docker container on your
+                local machine. This is ideal for development and testing.
+              </p>
+              <div class="code-block">
+                <button class="copy-btn" data-clipboard-target="#local-code">
+                  Copy
+                </button>
+                <pre><code id="local-code" class="language-bash"># 1. Clone the repository
+git clone https://github.com/shahzaibtkturners/transcription-api.git
+cd transcription-api
+
+# 2. Build the Docker image
+docker build -t transcription-api .
+
+# 3. Run the container
+docker run -d -p 8000:8000 --name transcription-service transcription-api</code></pre>
+              </div>
+            </div>
+
+            <div id="compose-content" class="deployment-content hidden">
+              <h3 class="text-xl font-semibold mb-2">
+                Docker Compose / Portainer
+              </h3>
+              <p class="text-gray-600 mb-4">
+                Use this `docker-compose.yml` configuration to deploy with
+                Docker Compose or as a stack in Portainer. It builds directly
+                from GitHub.
+              </p>
+              <div class="code-block">
+                <button class="copy-btn" data-clipboard-target="#compose-code">
+                  Copy
+                </button>
+                <pre><code id="compose-code" class="language-yaml">version: '3.8'
+
+services:
+  transcription-api:
+    build:
+      context: https://github.com/shahzaibtkturners/transcription-api.git
+      dockerfile: Dockerfile
+    container_name: transcription-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="usage" class="py-16">
+        <div class="container mx-auto px-6">
+          <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold tracking-tight text-gray-900">
+              API Usage
+            </h2>
+            <p class="mt-2 text-lg text-gray-600">
+              Once running, send a POST request to the `/upload/` endpoint.
+            </p>
+          </div>
+          <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
+            <div>
+              <h3 class="text-xl font-semibold mb-2">Example Request</h3>
+              <p class="text-gray-600 mb-4">
+                Use `curl` or any HTTP client to send a `multipart/form-data`
+                request with your file.
+              </p>
+              <div class="code-block">
+                <button class="copy-btn" data-clipboard-target="#request-code">
+                  Copy
+                </button>
+                <pre><code id="request-code" class="language-bash">curl -X POST "http://localhost:8000/upload/" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@/path/to/your/sample.pdf"</code></pre>
+              </div>
+            </div>
+            <div>
+              <h3 class="text-xl font-semibold mb-2">Example Response</h3>
+              <p class="text-gray-600 mb-4">
+                You'll receive a JSON response containing the extracted text and
+                file metadata.
+              </p>
+              <div class="code-block">
+                <pre><code class="language-json">{
+  "filename": "sample.pdf",
+  "content_type": "application/pdf",
+  "text": "This is the extracted text content..."
+}</code></pre>
+              </div>
+            </div>
+          </div>
+          <p class="text-center mt-8 text-gray-600">
+            The interactive API documentation is also available at
+            <code class="bg-gray-200 text-sm p-1 rounded">/docs</code> on your
+            server.
+          </p>
+        </div>
+      </section>
+
+      <section id="contributing" class="py-16 bg-white">
+        <div class="container mx-auto px-6 text-center">
+          <h2 class="text-3xl font-bold tracking-tight text-gray-900">
+            Contribute & Support
+          </h2>
+          <p class="mt-2 text-lg text-gray-600 max-w-2xl mx-auto">
+            This project is open-source. We welcome contributions and support
+            from the community!
+          </p>
+          <div
+            class="mt-8 flex flex-col md:flex-row justify-center items-center gap-6"
+          >
+            <a
+              href="https://github.com/shahzaibtkturners/transcription-api"
+              target="_blank"
+              class="bg-gray-800 text-white font-semibold px-8 py-3 rounded-lg shadow-md hover:bg-gray-900 transition-colors"
+            >
+              Contribute on GitHub
+            </a>
+            <a
+              href="https://www.buymeacoffee.com/shahzaibtkturners"
+              target="_blank"
+            >
+              <img
+                src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=☕&slug=shahzaibtkturners&button_colour=FFDD00&font_colour=000000&font_family=Inter&outline_colour=000000&coffee_colour=ffffff"
+                alt="Buy me a coffee"
+                class="rounded-lg hover:opacity-90 transition-opacity"
+              />
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white py-8">
+      <div class="container mx-auto px-6 text-center">
+        <p>Developed by Shahzaib</p>
+        <p class="mt-1 text-sm text-gray-400">
+          Licensed under the MIT License.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      const deploymentTabs = document.querySelectorAll(".deployment-tab");
+      const deploymentContents = document.querySelectorAll(
+        ".deployment-content"
+      );
+      const copyButtons = document.querySelectorAll(".copy-btn");
+
+      deploymentTabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+          deploymentTabs.forEach((item) => {
+            item.classList.remove("active-tab");
+            item.classList.add("inactive-tab");
+          });
+          tab.classList.add("active-tab");
+          tab.classList.remove("inactive-tab");
+
+          const targetId = tab.id.replace("-tab", "-content");
+          deploymentContents.forEach((content) => {
+            if (content.id === targetId) {
+              content.classList.remove("hidden");
+            } else {
+              content.classList.add("hidden");
+            }
+          });
+        });
+      });
+
+      copyButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const targetSelector = button.dataset.clipboardTarget;
+          const codeElement = document.querySelector(targetSelector);
+          const textToCopy = codeElement.innerText;
+
+          const tempTextArea = document.createElement("textarea");
+          tempTextArea.value = textToCopy;
+          document.body.appendChild(tempTextArea);
+          tempTextArea.select();
+          try {
+            document.execCommand("copy");
+            const originalText = button.innerText;
+            button.innerText = "Copied!";
+            setTimeout(() => {
+              button.innerText = originalText;
+            }, 2000);
+          } catch (err) {
+            console.error("Failed to copy text: ", err);
+          }
+          document.body.removeChild(tempTextArea);
+        });
+      });
+    </script>
+  </body>
+</html>
