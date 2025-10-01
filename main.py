@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Global configuration
-MODEL_NAME = "large-v2"
+MODEL_NAME = "base.en"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MAX_FILE_SIZE = 200 * 1024 * 1024  # 200 MB
 ALLOWED_EXTENSIONS = {
