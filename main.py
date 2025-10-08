@@ -235,7 +235,7 @@ async def transcribe_audio(
     task: str = "transcribe"
 ):
     """
-    Transcribe audio file and generate subtitles in SRT format
+    Transcribe audio file and generate subtitles in VTT format
     """
     # Validate file type
     allowed_extensions = {'.wav', '.mp3', '.m4a',
@@ -255,8 +255,8 @@ async def transcribe_audio(
     # Generate unique filename
     file_id = str(uuid.uuid4())
     temp_audio_path = os.path.join(temp_dir, f"{file_id}{file_extension}")
-    srt_filename = f"{file_id}.srt"
-    srt_path = os.path.join(temp_dir, srt_filename)
+    vtt_filename = f"{file_id}.vtt"
+    vtt_path = os.path.join(temp_dir, vtt_filename)
 
     try:
         # Save uploaded file
@@ -277,30 +277,33 @@ async def transcribe_audio(
         # Convert segments to list to avoid generator exhaustion
         segments_list = list(segments)
 
-        # Generate SRT file
-        with open(srt_path, "w", encoding="utf-8") as srt_file:
-            for i, segment in enumerate(segments_list, start=1):
-                # Convert seconds to SRT time format (HH:MM:SS,mmm)
-                start_time = format_time(segment.start)
-                end_time = format_time(segment.end)
+        # Generate VTT file
+        with open(vtt_path, "w", encoding="utf-8") as vtt_file:
+            # Write VTT header
+            vtt_file.write("WEBVTT\n\n")
 
-                # Write SRT entry
-                srt_file.write(f"{i}\n")
-                srt_file.write(f"{start_time} --> {end_time}\n")
-                srt_file.write(f"{segment.text}\n\n")
+            for i, segment in enumerate(segments_list, start=1):
+                # Convert seconds to VTT time format (HH:MM:SS.mmm)
+                start_time = format_time_vtt(segment.start)
+                end_time = format_time_vtt(segment.end)
+
+                # Write VTT entry
+                vtt_file.write(f"{i}\n")
+                vtt_file.write(f"{start_time} --> {end_time}\n")
+                vtt_file.write(f"{segment.text}\n\n")
 
         # Clean up audio file immediately
         if os.path.exists(temp_audio_path):
             os.remove(temp_audio_path)
 
-        # Add cleanup task for SRT file
-        background_tasks.add_task(cleanup_srt_file, srt_path)
+        # Add cleanup task for VTT file
+        background_tasks.add_task(cleanup_vtt_file, vtt_path)
 
-        # Return the SRT file
+        # Return the VTT file
         return FileResponse(
-            path=srt_path,
-            media_type='application/x-subrip',
-            filename=f"transcription_{os.path.splitext(audio_file.filename)[0]}.srt"
+            path=vtt_path,
+            media_type='text/vtt',
+            filename=f"transcription_{os.path.splitext(audio_file.filename)[0]}.vtt"
         )
 
     except Exception as e:
@@ -308,31 +311,31 @@ async def transcribe_audio(
         try:
             if os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
-            if os.path.exists(srt_path):
-                os.remove(srt_path)
+            if os.path.exists(vtt_path):
+                os.remove(vtt_path)
         except:
             pass
         raise HTTPException(
             status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
-def cleanup_srt_file(file_path: str):
-    """Clean up SRT file after download"""
+def cleanup_vtt_file(file_path: str):
+    """Clean up VTT file after download"""
     try:
         if os.path.exists(file_path):
             os.remove(file_path)
-            print(f"Cleaned up SRT file: {file_path}")
+            print(f"Cleaned up VTT file: {file_path}")
     except Exception as e:
-        print(f"Error cleaning up SRT file: {e}")
+        print(f"Error cleaning up VTT file: {e}")
 
 
-def format_time(seconds: float) -> str:
+def format_time_vtt(seconds: float) -> str:
     """
-    Convert seconds to SRT time format: HH:MM:SS,mmm
+    Convert seconds to VTT time format: HH:MM:SS.mmm
     """
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     seconds_remainder = seconds % 60
     milliseconds = int((seconds_remainder - int(seconds_remainder)) * 1000)
 
-    return f"{hours:02d}:{minutes:02d}:{int(seconds_remainder):02d},{milliseconds:03d}"
+    return f"{hours:02d}:{minutes:02d}:{int(seconds_remainder):02d}.{milliseconds:03d}"
