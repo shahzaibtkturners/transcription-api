@@ -2,12 +2,13 @@ import os
 import re
 import logging
 from typing import Optional
+import requests
 import uuid
 import torch
 import shutil
 import subprocess
 from faster_whisper import WhisperModel
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import Body, FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 
 
@@ -226,107 +227,107 @@ def get_model(model_size: str = "base"):
     return model_cache[model_size]
 
 
-@app.post("/transcribe-audio")
-async def transcribe_audio(
-    background_tasks: BackgroundTasks,
-    audio_file: UploadFile = File(...),
-    model_size: str = "base",
-    language: Optional[str] = None,
-    task: str = "transcribe"
-):
-    """
-    Transcribe audio file and generate subtitles in VTT format
-    """
-    # Validate file type
-    allowed_extensions = {'.wav', '.mp3', '.m4a',
-                          '.flac', '.aac', '.ogg', '.mpeg', '.webm'}
-    file_extension = os.path.splitext(audio_file.filename)[1].lower()
+# @app.post("/transcribe-audio")
+# async def transcribe_audio(
+#     background_tasks: BackgroundTasks,
+#     audio_file: UploadFile = File(...),
+#     model_size: str = "base",
+#     language: Optional[str] = None,
+#     task: str = "transcribe"
+# ):
+#     """
+#     Transcribe audio file and generate subtitles in VTT format
+#     """
+#     # Validate file type
+#     allowed_extensions = {'.wav', '.mp3', '.m4a',
+#                           '.flac', '.aac', '.ogg', '.mpeg', '.webm'}
+#     file_extension = os.path.splitext(audio_file.filename)[1].lower()
 
-    if file_extension not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type. Allowed types: {', '.join(allowed_extensions)}"
-        )
+#     if file_extension not in allowed_extensions:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"Unsupported file type. Allowed types: {', '.join(allowed_extensions)}"
+#         )
 
-    # Create temporary directory if it doesn't exist
-    temp_dir = "temp_audio"
-    os.makedirs(temp_dir, exist_ok=True)
+#     # Create temporary directory if it doesn't exist
+#     temp_dir = "temp_audio"
+#     os.makedirs(temp_dir, exist_ok=True)
 
-    # Generate unique filename
-    file_id = str(uuid.uuid4())
-    temp_audio_path = os.path.join(temp_dir, f"{file_id}{file_extension}")
-    vtt_filename = f"{file_id}.vtt"
-    vtt_path = os.path.join(temp_dir, vtt_filename)
+#     # Generate unique filename
+#     file_id = str(uuid.uuid4())
+#     temp_audio_path = os.path.join(temp_dir, f"{file_id}{file_extension}")
+#     vtt_filename = f"{file_id}.vtt"
+#     vtt_path = os.path.join(temp_dir, vtt_filename)
 
-    try:
-        # Save uploaded file
-        with open(temp_audio_path, "wb") as buffer:
-            content = await audio_file.read()
-            buffer.write(content)
+#     try:
+#         # Save uploaded file
+#         with open(temp_audio_path, "wb") as buffer:
+#             content = await audio_file.read()
+#             buffer.write(content)
 
-        # Get the model
-        transcribe_model = get_model(model_size)
+#         # Get the model
+#         transcribe_model = get_model(model_size)
 
-        # Transcribe audio
-        segments, info = transcribe_model.transcribe(
-            temp_audio_path,
-            language=language,
-            task=task
-        )
+#         # Transcribe audio
+#         segments, info = transcribe_model.transcribe(
+#             temp_audio_path,
+#             language=language,
+#             task=task
+#         )
 
-        # Convert segments to list to avoid generator exhaustion
-        segments_list = list(segments)
+#         # Convert segments to list to avoid generator exhaustion
+#         segments_list = list(segments)
 
-        # Generate VTT file
-        with open(vtt_path, "w", encoding="utf-8") as vtt_file:
-            # Write VTT header
-            vtt_file.write("WEBVTT\n\n")
+#         # Generate VTT file
+#         with open(vtt_path, "w", encoding="utf-8") as vtt_file:
+#             # Write VTT header
+#             vtt_file.write("WEBVTT\n\n")
 
-            for i, segment in enumerate(segments_list, start=1):
-                # Convert seconds to VTT time format (HH:MM:SS.mmm)
-                start_time = format_time_vtt(segment.start)
-                end_time = format_time_vtt(segment.end)
+#             for i, segment in enumerate(segments_list, start=1):
+#                 # Convert seconds to VTT time format (HH:MM:SS.mmm)
+#                 start_time = format_time_vtt(segment.start)
+#                 end_time = format_time_vtt(segment.end)
 
-                # Write VTT entry
-                vtt_file.write(f"{i}\n")
-                vtt_file.write(f"{start_time} --> {end_time}\n")
-                vtt_file.write(f"{segment.text}\n\n")
+#                 # Write VTT entry
+#                 vtt_file.write(f"{i}\n")
+#                 vtt_file.write(f"{start_time} --> {end_time}\n")
+#                 vtt_file.write(f"{segment.text}\n\n")
 
-        # Clean up audio file immediately
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
+#         # Clean up audio file immediately
+#         if os.path.exists(temp_audio_path):
+#             os.remove(temp_audio_path)
 
-        # Add cleanup task for VTT file
-        background_tasks.add_task(cleanup_vtt_file, vtt_path)
+#         # Add cleanup task for VTT file
+#         background_tasks.add_task(cleanup_vtt_file, vtt_path)
 
-        # Return the VTT file
-        return FileResponse(
-            path=vtt_path,
-            media_type='text/vtt',
-            filename=f"transcription_{os.path.splitext(audio_file.filename)[0]}.vtt"
-        )
+#         # Return the VTT file
+#         return FileResponse(
+#             path=vtt_path,
+#             media_type='text/vtt',
+#             filename=f"transcription_{os.path.splitext(audio_file.filename)[0]}.vtt"
+#         )
 
-    except Exception as e:
-        # Cleanup on error
-        try:
-            if os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
-            if os.path.exists(vtt_path):
-                os.remove(vtt_path)
-        except:
-            pass
-        raise HTTPException(
-            status_code=500, detail=f"Transcription failed: {str(e)}")
+#     except Exception as e:
+#         # Cleanup on error
+#         try:
+#             if os.path.exists(temp_audio_path):
+#                 os.remove(temp_audio_path)
+#             if os.path.exists(vtt_path):
+#                 os.remove(vtt_path)
+#         except:
+#             pass
+#         raise HTTPException(
+#             status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
-def cleanup_vtt_file(file_path: str):
-    """Clean up VTT file after download"""
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            print(f"Cleaned up VTT file: {file_path}")
-    except Exception as e:
-        print(f"Error cleaning up VTT file: {e}")
+# def cleanup_vtt_file(file_path: str):
+#     """Clean up VTT file after download"""
+#     try:
+#         if os.path.exists(file_path):
+#             os.remove(file_path)
+#             print(f"Cleaned up VTT file: {file_path}")
+#     except Exception as e:
+#         print(f"Error cleaning up VTT file: {e}")
 
 
 def format_time_vtt(seconds: float) -> str:
@@ -339,3 +340,149 @@ def format_time_vtt(seconds: float) -> str:
     milliseconds = int((seconds_remainder - int(seconds_remainder)) * 1000)
 
     return f"{hours:02d}:{minutes:02d}:{int(seconds_remainder):02d}.{milliseconds:03d}"
+
+
+STRAPI_URL = os.getenv("STRAPI_URL", "http://localhost:1337")
+STRAPI_TOKEN = os.getenv("STRAPI_TOKEN", "b8be2b62de8de3c6605987814b902e04f0ca87fb82d1d1952e259a01affe2db02e4af9e53fc9d2793a180dc78a9451986f6fa048f9132c8689bc098d5dbbcc68b5065ab9298fb09ced9e3a541ae813548afd546ad447cc84d5bce60d5d4abfb1124c228b387c31aa26f98b988c48a7f7737b13e4619192b2ad9e11ee1be72b5e")
+
+
+@app.post("/transcribe-audio")
+async def transcribe_audio(
+    background_tasks: BackgroundTasks,
+    audio_url: str = Body(...),
+    audio_id: str = Body(...),
+    model_size: str = Body("base"),
+    language: Optional[str] = Body(None),
+    task: str = Body("transcribe")
+):
+    log_prefix = "[🎧 Subtitle Generator]"
+    audio_url = audio_url
+    audio_id = audio_id
+    model_size = model_size
+    language = language
+    task = task
+
+    print(f"{log_prefix} Started for audio_id: {audio_id}")
+
+    temp_dir = "temp_audio"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    file_id = str(uuid.uuid4())
+    temp_audio_path = os.path.join(temp_dir, f"{file_id}.mp3")
+    vtt_path = os.path.join(temp_dir, f"{file_id}.vtt")
+
+    try:
+        # 1️⃣ Download audio file
+        print(f"{log_prefix} Downloading from {audio_url}")
+        audio_res = requests.get(audio_url, stream=True, timeout=60)
+        if audio_res.status_code != 200:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to download audio: {audio_res.status_code}")
+
+        with open(temp_audio_path, "wb") as f:
+            for chunk in audio_res.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        # 2️⃣ Load Whisper model
+        print(f"{log_prefix} Loading model: {model_size}")
+        transcribe_model = get_model(model_size)
+
+        # 3️⃣ Transcribe audio
+        print(f"{log_prefix} Transcribing audio...")
+        segments, info = transcribe_model.transcribe(
+            temp_audio_path,
+            language=language,
+            task=task
+        )
+
+        segments_list = list(segments)
+
+        # 4️⃣ Generate VTT file
+        print(f"{log_prefix} Generating VTT...")
+        with open(vtt_path, "w", encoding="utf-8") as vtt_file:
+            vtt_file.write("WEBVTT\n\n")
+            for i, segment in enumerate(segments_list, start=1):
+                start_time = format_time_vtt(segment.start)
+                end_time = format_time_vtt(segment.end)
+                text = segment.text.strip()
+                vtt_file.write(f"{i}\n{start_time} --> {end_time}\n{text}\n\n")
+
+        # 5️⃣ Upload VTT to Strapi
+        print(f"{log_prefix} Uploading VTT to Strapi...")
+        with open(vtt_path, "rb") as file_data:
+            files = {"files": (os.path.basename(
+                vtt_path), file_data, "text/vtt")}
+            headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
+            upload_res = requests.post(
+                f"{STRAPI_URL}/api/upload", headers=headers, files=files)
+
+        if upload_res.status_code not in (200, 201):
+            raise Exception(f"Upload failed: {upload_res.text}")
+
+        # ✅ Handle Strapi upload response
+        try:
+            uploaded_json = upload_res.json()
+            if isinstance(uploaded_json, list) and len(uploaded_json) > 0:
+                uploaded_vtt = uploaded_json[0]
+            elif isinstance(uploaded_json, dict) and "id" in uploaded_json:
+                uploaded_vtt = uploaded_json
+            else:
+                raise ValueError(
+                    f"Unexpected upload response format: {uploaded_json}")
+        except Exception as e:
+            raise Exception(f"Upload succeeded but parsing failed: {e}")
+
+        subtitle_file_id = uploaded_vtt["id"]
+        print(f"{log_prefix} ✅ Uploaded VTT file (id={subtitle_file_id})")
+
+        # 6️⃣ Create subtitle entry in Strapi
+        print(f"{log_prefix} Creating subtitle entry in Strapi...")
+        subtitle_payload = {
+            "data": {
+                "subtitle": subtitle_file_id,
+                "audio": audio_id
+            }
+        }
+
+        headers = {
+            "Authorization": f"Bearer {STRAPI_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        create_res = requests.post(
+            f"{STRAPI_URL}/api/subtitles",
+            headers=headers,
+            json=subtitle_payload
+        )
+
+        if create_res.status_code not in (200, 201):
+            raise Exception(
+                f"Subtitle entry creation failed: {create_res.text}")
+
+        print(f"{log_prefix} ✅ Subtitle entry created successfully")
+
+        # 7️⃣ Cleanup after success
+        background_tasks.add_task(cleanup_files, [temp_audio_path, vtt_path])
+
+        # 8️⃣ Return success JSON
+        return JSONResponse({
+            "success": True,
+            "subtitle_file": uploaded_vtt,
+            "subtitle_entry": create_res.json()
+        })
+
+    except Exception as e:
+        print(f"{log_prefix} ❌ Error: {e}")
+        cleanup_files([temp_audio_path, vtt_path])
+        raise HTTPException(
+            status_code=500, detail=f"Transcription failed: {e}")
+
+
+def cleanup_files(file_paths: list[str]):
+    for p in file_paths:
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+                print(f"🧹 Cleaned up: {p}")
+        except Exception as e:
+            print(f"Cleanup error for {p}: {e}")
