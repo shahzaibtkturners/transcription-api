@@ -388,7 +388,7 @@ async def transcribe_audio(
         transcribe_model = get_model(model_size)
 
         # 3️⃣ Transcribe audio
-        print(f"{log_prefix} Transcribing audio...")
+        print(f"{log_prefix} Transcribing audio....")
         segments, info = transcribe_model.transcribe(
             temp_audio_path,
             language=language,
