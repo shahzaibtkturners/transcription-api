@@ -342,8 +342,8 @@ def format_time_vtt(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{int(seconds_remainder):02d}.{milliseconds:03d}"
 
 
-STRAPI_URL = os.getenv("STRAPI_URL", "http://localhost:1337")
-STRAPI_TOKEN = os.getenv("STRAPI_TOKEN", "b8be2b62de8de3c6605987814b902e04f0ca87fb82d1d1952e259a01affe2db02e4af9e53fc9d2793a180dc78a9451986f6fa048f9132c8689bc098d5dbbcc68b5065ab9298fb09ced9e3a541ae813548afd546ad447cc84d5bce60d5d4abfb1124c228b387c31aa26f98b988c48a7f7737b13e4619192b2ad9e11ee1be72b5e")
+STRAPI_URL = os.getenv("STRAPI_URL")
+STRAPI_TOKEN = os.getenv("STRAPI_TOKEN")
 
 
 @app.post("/transcribe-audio")
