@@ -43,8 +43,6 @@ ALLOWED_EXTENSIONS = {
 # ✅ Allowed origins
 allowed_origins = [
     "https://www.voxento.com",
-    "http://localhost:8080",
-    "http://localhost:1337",
     "https://jon.voxento.com",
 ]
 
@@ -58,14 +56,7 @@ origin_configs = {
         "STRAPI_URL": "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
         "STRAPI_TOKEN": "05936d0fe48bd7c3ac95d982484f8f016032c49b9c915d458d6ba2e7a5274acce770bfcd2b0260b3c8051b5bc0f2bd4db1c854c9a1a239377689b39bc20a9d1ca47e8c72fe9814ca703693ee9ff288b0ef2dbae44fa921a6f7e8165699f472123ff245a780f8736aa512342cf63211d27e7993fea464d8353305b17bb3f4ea21",
     },
-    "http://localhost:8080": {
-        "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
-        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
-    },
-    "http://localhost:1337": {
-        "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
-        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
-    },
+
 }
 
 # Load Whisper model
