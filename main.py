@@ -1,15 +1,16 @@
 import os
 import re
 import logging
-from typing import Optional
+from typing import Dict, Optional
 import requests
 import uuid
 import torch
 import shutil
 import subprocess
 from faster_whisper import WhisperModel
-from fastapi import Body, FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import Body, FastAPI, Request, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 
 import pdfplumber
@@ -39,6 +40,34 @@ ALLOWED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".tiff"
 }
 
+# ✅ Allowed origins
+allowed_origins = [
+    "https://www.voxento.com",
+    "http://localhost:8080",
+    "http://localhost:1337",
+    "https://jon.voxento.com",
+]
+
+# ✅ Origin-specific Strapi configuration
+origin_configs = {
+    "https://www.voxento.com": {
+        "STRAPI_URL": "https://voxento-backend-778d4071d912.herokuapp.com",
+        "STRAPI_TOKEN": "a5eab6606a5a41d7d2d74004f2cd61ad3799c15d24d042286c22c324ce2ba44451b465ee0d12fbf645fcecb05744b5fff1e0948b62f340b2194dfd814ccff08df5579ed617a820ba40b84e4e65059c063ec1893595606552b200787a06448cdd8d4329f1957249c4e5c481eeff5ea95dfdbe66588411ec6cc1409c955ee786ad",
+    },
+    "https://jon.voxento.com": {
+        "STRAPI_URL": "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
+        "STRAPI_TOKEN": "05936d0fe48bd7c3ac95d982484f8f016032c49b9c915d458d6ba2e7a5274acce770bfcd2b0260b3c8051b5bc0f2bd4db1c854c9a1a239377689b39bc20a9d1ca47e8c72fe9814ca703693ee9ff288b0ef2dbae44fa921a6f7e8165699f472123ff245a780f8736aa512342cf63211d27e7993fea464d8353305b17bb3f4ea21",
+    },
+    "http://localhost:8080": {
+        "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
+        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
+    },
+    "http://localhost:1337": {
+        "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
+        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
+    },
+}
+
 # Load Whisper model
 try:
     whisper_model = WhisperModel(
@@ -48,6 +77,28 @@ except Exception as e:
     raise
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def get_strapi_config(origin: Optional[str]) -> Optional[Dict]:
+    if origin and origin in origin_configs:
+        return origin_configs[origin]
+
+    # 🧠 Fallback for local tools (e.g., Postman / direct call)
+    if not origin and os.getenv("STRAPI_URL") and os.getenv("STRAPI_TOKEN"):
+        return {
+            "STRAPI_URL": os.getenv("STRAPI_URL"),
+            "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN"),
+        }
+
+    print(f"⚠️ Unknown origin: {origin}")
+    return None
 
 
 def sanitize_filename(filename: str) -> str:
@@ -227,109 +278,6 @@ def get_model(model_size: str = "base"):
     return model_cache[model_size]
 
 
-# @app.post("/transcribe-audio")
-# async def transcribe_audio(
-#     background_tasks: BackgroundTasks,
-#     audio_file: UploadFile = File(...),
-#     model_size: str = "base",
-#     language: Optional[str] = None,
-#     task: str = "transcribe"
-# ):
-#     """
-#     Transcribe audio file and generate subtitles in VTT format
-#     """
-#     # Validate file type
-#     allowed_extensions = {'.wav', '.mp3', '.m4a',
-#                           '.flac', '.aac', '.ogg', '.mpeg', '.webm'}
-#     file_extension = os.path.splitext(audio_file.filename)[1].lower()
-
-#     if file_extension not in allowed_extensions:
-#         raise HTTPException(
-#             status_code=400,
-#             detail=f"Unsupported file type. Allowed types: {', '.join(allowed_extensions)}"
-#         )
-
-#     # Create temporary directory if it doesn't exist
-#     temp_dir = "temp_audio"
-#     os.makedirs(temp_dir, exist_ok=True)
-
-#     # Generate unique filename
-#     file_id = str(uuid.uuid4())
-#     temp_audio_path = os.path.join(temp_dir, f"{file_id}{file_extension}")
-#     vtt_filename = f"{file_id}.vtt"
-#     vtt_path = os.path.join(temp_dir, vtt_filename)
-
-#     try:
-#         # Save uploaded file
-#         with open(temp_audio_path, "wb") as buffer:
-#             content = await audio_file.read()
-#             buffer.write(content)
-
-#         # Get the model
-#         transcribe_model = get_model(model_size)
-
-#         # Transcribe audio
-#         segments, info = transcribe_model.transcribe(
-#             temp_audio_path,
-#             language=language,
-#             task=task
-#         )
-
-#         # Convert segments to list to avoid generator exhaustion
-#         segments_list = list(segments)
-
-#         # Generate VTT file
-#         with open(vtt_path, "w", encoding="utf-8") as vtt_file:
-#             # Write VTT header
-#             vtt_file.write("WEBVTT\n\n")
-
-#             for i, segment in enumerate(segments_list, start=1):
-#                 # Convert seconds to VTT time format (HH:MM:SS.mmm)
-#                 start_time = format_time_vtt(segment.start)
-#                 end_time = format_time_vtt(segment.end)
-
-#                 # Write VTT entry
-#                 vtt_file.write(f"{i}\n")
-#                 vtt_file.write(f"{start_time} --> {end_time}\n")
-#                 vtt_file.write(f"{segment.text}\n\n")
-
-#         # Clean up audio file immediately
-#         if os.path.exists(temp_audio_path):
-#             os.remove(temp_audio_path)
-
-#         # Add cleanup task for VTT file
-#         background_tasks.add_task(cleanup_vtt_file, vtt_path)
-
-#         # Return the VTT file
-#         return FileResponse(
-#             path=vtt_path,
-#             media_type='text/vtt',
-#             filename=f"transcription_{os.path.splitext(audio_file.filename)[0]}.vtt"
-#         )
-
-#     except Exception as e:
-#         # Cleanup on error
-#         try:
-#             if os.path.exists(temp_audio_path):
-#                 os.remove(temp_audio_path)
-#             if os.path.exists(vtt_path):
-#                 os.remove(vtt_path)
-#         except:
-#             pass
-#         raise HTTPException(
-#             status_code=500, detail=f"Transcription failed: {str(e)}")
-
-
-# def cleanup_vtt_file(file_path: str):
-#     """Clean up VTT file after download"""
-#     try:
-#         if os.path.exists(file_path):
-#             os.remove(file_path)
-#             print(f"Cleaned up VTT file: {file_path}")
-#     except Exception as e:
-#         print(f"Error cleaning up VTT file: {e}")
-
-
 def format_time_vtt(seconds: float) -> str:
     """
     Convert seconds to VTT time format: HH:MM:SS.mmm
@@ -342,12 +290,9 @@ def format_time_vtt(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{int(seconds_remainder):02d}.{milliseconds:03d}"
 
 
-STRAPI_URL = os.getenv("STRAPI_URL")
-STRAPI_TOKEN = os.getenv("STRAPI_TOKEN")
-
-
 @app.post("/transcribe-audio")
-async def transcribe_audio(
+async def transcribe_audio_api(
+    request: Request,
     background_tasks: BackgroundTasks,
     audio_url: str = Body(...),
     audio_id: str = Body(...),
@@ -362,7 +307,19 @@ async def transcribe_audio(
     language = language
     task = task
 
-    print(f"{log_prefix} Started for audio_id: {audio_id}")
+    origin = request.headers.get("origin")
+    config = get_strapi_config(origin)
+
+    print(f"config: {config}------ origin:{origin}")
+
+    if not config:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid or unsupported origin: {origin}")
+
+    STRAPI_URL = config["STRAPI_URL"]
+    STRAPI_TOKEN = config["STRAPI_TOKEN"]
+
+    print(f"{log_prefix} Started for audio_id: {audio_id} | Origin: {origin}")
 
     temp_dir = "temp_audio"
     os.makedirs(temp_dir, exist_ok=True)
@@ -486,3 +443,117 @@ def cleanup_files(file_paths: list[str]):
                 print(f"🧹 Cleaned up: {p}")
         except Exception as e:
             print(f"Cleanup error for {p}: {e}")
+
+
+@app.post("/transcribe-video")
+async def transcribe_video(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    module_doc_id: str = Body(...),
+    video_url: str = Body(...),
+):
+    log_prefix = "[🎬 Video Transcription]"
+    origin = request.headers.get("origin")
+    config = get_strapi_config(origin)
+
+    print(f"{log_prefix} Origin: {origin}")
+    if not config:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid or unsupported origin: {origin}")
+
+    STRAPI_URL = config["STRAPI_URL"]
+    STRAPI_TOKEN = config["STRAPI_TOKEN"]
+
+    temp_dir = "temp_video"
+    os.makedirs(temp_dir, exist_ok=True)
+    file_id = str(uuid.uuid4())
+
+    temp_video_path = os.path.join(temp_dir, f"{file_id}.mp4")
+    temp_audio_path = os.path.join(temp_dir, f"{file_id}.wav")
+    txt_path = os.path.join(temp_dir, f"{file_id}.txt")
+
+    try:
+        # 1️⃣ Download video
+        print(f"{log_prefix} Downloading from {video_url}")
+        video_res = requests.get(video_url, stream=True, timeout=60)
+        if video_res.status_code != 200:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to download video: {video_res.status_code}")
+
+        with open(temp_video_path, "wb") as f:
+            for chunk in video_res.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        # 2️⃣ Extract audio
+        print(f"{log_prefix} Extracting audio with ffmpeg...")
+        subprocess.run(
+            ["ffmpeg", "-i", temp_video_path, "-vn", "-acodec",
+                "pcm_s16le", "-ar", "16000", temp_audio_path],
+            check=True,
+        )
+
+        # 3️⃣ Transcribe audio
+        print(f"{log_prefix} Transcribing audio...")
+        transcription_text = transcribe_audio(temp_audio_path)
+
+        # 4️⃣ Save transcription as .txt
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(transcription_text)
+
+        # 5️⃣ Upload transcription .txt file to Strapi
+        print(f"{log_prefix} Uploading transcription to Strapi...")
+        with open(txt_path, "rb") as f:
+            files = {"files": (os.path.basename(txt_path), f, "text/plain")}
+            headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
+            upload_res = requests.post(
+                f"{STRAPI_URL}/api/upload", headers=headers, files=files)
+
+        if upload_res.status_code not in (200, 201):
+            raise Exception(f"Upload failed: {upload_res.text}")
+
+        uploaded_json = upload_res.json()
+        uploaded_file = uploaded_json[0] if isinstance(
+            uploaded_json, list) else uploaded_json
+        file_id_uploaded = uploaded_file["id"]
+        print(f"{log_prefix} ✅ Uploaded transcription file (id={file_id_uploaded})")
+
+        # 6️⃣ Update Strapi module content
+        print(f"{log_prefix} Updating module {module_doc_id} in Strapi...")
+        update_payload = {
+            "module_id": module_doc_id,
+            "transcription_file_id": file_id_uploaded,
+        }
+
+        update_url = f"{STRAPI_URL}/api/moduleContent/videoTranscription"
+
+        update_res = requests.put(
+            update_url, json=update_payload)
+
+        if update_res.status_code not in (200, 201):
+            raise Exception(
+                f"Module update failed: {update_res.status_code} -> {update_res.text}")
+
+        print(f"{log_prefix} ✅ Module updated successfully in Strapi")
+
+        # 7️⃣ Cleanup
+        background_tasks.add_task(
+            cleanup_files, [temp_video_path, temp_audio_path, txt_path])
+
+        return JSONResponse(
+            {
+                "success": True,
+                "transcription_file_id": file_id_uploaded,
+                "module_updated": True,
+            }
+        )
+
+    except Exception as e:
+        print(f"{log_prefix} ❌ Error: {e}")
+        for file_path in [temp_video_path, temp_audio_path, txt_path]:
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+        raise HTTPException(
+            status_code=500, detail=f"Video transcription failed: {e}")
