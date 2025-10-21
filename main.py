@@ -43,8 +43,8 @@ ALLOWED_EXTENSIONS = {
 # ✅ Allowed origins
 allowed_origins = [
     "https://www.voxento.com",
-    # "http://localhost:8080",
-    # "http://localhost:1337",
+    "http://localhost:8080",
+    "http://localhost:1337",
     "https://jon.voxento.com",
 ]
 
@@ -58,14 +58,14 @@ origin_configs = {
         "STRAPI_URL": "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
         "STRAPI_TOKEN": "05936d0fe48bd7c3ac95d982484f8f016032c49b9c915d458d6ba2e7a5274acce770bfcd2b0260b3c8051b5bc0f2bd4db1c854c9a1a239377689b39bc20a9d1ca47e8c72fe9814ca703693ee9ff288b0ef2dbae44fa921a6f7e8165699f472123ff245a780f8736aa512342cf63211d27e7993fea464d8353305b17bb3f4ea21",
     },
-    # "http://localhost:8080": {
-    #     "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
-    #     "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
-    # },
-    # "http://localhost:1337": {
-    #     "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
-    #     "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
-    # },
+    "http://localhost:8080": {
+        "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
+        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
+    },
+    "http://localhost:1337": {
+        "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
+        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
+    },
 }
 
 # Load Whisper model
@@ -522,7 +522,7 @@ async def transcribe_video(
         print(f"{log_prefix} Updating module {module_doc_id} in Strapi...")
         update_payload = {
             "module_id": module_doc_id,
-            "transcription_file_id": file_id_uploaded,
+            "transcription_file": file_id_uploaded,
             "content_type": "video"
         }
 
@@ -544,7 +544,7 @@ async def transcribe_video(
         return JSONResponse(
             {
                 "success": True,
-                "transcription_file_id": file_id_uploaded,
+                "transcription_file": file_id_uploaded,
                 "module_updated": True,
             }
         )
@@ -734,7 +734,7 @@ async def extract_slides_text(
         print(f"{log_prefix} Updating module with extracted text...")
         update_payload = {
             "module_id": module_doc_id,  # Use the record ID for the update
-            "transcription_file_id": text_file_id,
+            "transcription_file": text_file_id,
             "content_type": "slides"
         }
 
@@ -778,3 +778,173 @@ async def extract_slides_text(
                     pass
         raise HTTPException(
             status_code=500, detail=f"Slides text extraction failed: {e}")
+
+
+@app.post("/transcribe-course-audio")
+async def transcribe_course_audio_api(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    audio_url: str = Body(...),
+    audio_id: str = Body(...),
+    module_doc_id: str = Body(...),
+    model_size: str = Body("base"),
+    language: Optional[str] = Body(None),
+    task: str = Body("transcribe")
+):
+    log_prefix = "[🎧Course Audio Subtitle Generator]"
+    audio_url = audio_url
+    audio_id = audio_id
+    model_size = model_size
+    language = language
+    task = task
+
+    origin = request.headers.get("origin")
+    config = get_strapi_config(origin)
+
+    print(f"config: {config}------ origin:{origin}")
+
+    if not config:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid or unsupported origin: {origin}")
+
+    STRAPI_URL = config["STRAPI_URL"]
+    STRAPI_TOKEN = config["STRAPI_TOKEN"]
+
+    print(f"{log_prefix} Started for audio_id: {audio_id} | Origin: {origin}")
+
+    temp_dir = "temp_audio"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    file_id = str(uuid.uuid4())
+    temp_audio_path = os.path.join(temp_dir, f"{file_id}.mp3")
+    vtt_path = os.path.join(temp_dir, f"{file_id}.vtt")
+
+    try:
+        # 1️⃣ Download audio file
+        print(f"{log_prefix} Downloading from {audio_url}")
+        audio_res = requests.get(audio_url, stream=True, timeout=60)
+        if audio_res.status_code != 200:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to download audio: {audio_res.status_code}")
+
+        with open(temp_audio_path, "wb") as f:
+            for chunk in audio_res.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        # 2️⃣ Load Whisper model
+        print(f"{log_prefix} Loading model: {model_size}")
+        transcribe_model = get_model(model_size)
+
+        # 3️⃣ Transcribe audio
+        print(f"{log_prefix} Transcribing audio...")
+        segments, info = transcribe_model.transcribe(
+            temp_audio_path,
+            language=language,
+            task=task
+        )
+
+        segments_list = list(segments)
+
+       # 4️⃣ Generate VTT file and collect full text
+        print(f"{log_prefix} Generating VTT and collecting text...")
+        full_text = ""
+        with open(vtt_path, "w", encoding="utf-8") as vtt_file:
+            vtt_file.write("WEBVTT\n\n")
+            for i, segment in enumerate(segments_list, start=1):
+                start_time = format_time_vtt(segment.start)
+                end_time = format_time_vtt(segment.end)
+                text = segment.text.strip()
+                vtt_file.write(f"{i}\n{start_time} --> {end_time}\n{text}\n\n")
+                full_text += text + " "
+
+        full_text = full_text.strip()
+
+        print(f"{log_prefix} full_text length: {full_text}")
+
+        # 5️⃣ Upload VTT to Strapi
+        print(f"{log_prefix} Uploading VTT to Strapi...")
+        with open(vtt_path, "rb") as file_data:
+            files = {"files": (os.path.basename(
+                vtt_path), file_data, "text/vtt")}
+            headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
+            upload_res = requests.post(
+                f"{STRAPI_URL}/api/upload", headers=headers, files=files)
+
+        if upload_res.status_code not in (200, 201):
+            raise Exception(f"Upload failed: {upload_res.text}")
+
+        # ✅ Handle Strapi upload response
+        try:
+            uploaded_json = upload_res.json()
+            if isinstance(uploaded_json, list) and len(uploaded_json) > 0:
+                uploaded_vtt = uploaded_json[0]
+            elif isinstance(uploaded_json, dict) and "id" in uploaded_json:
+                uploaded_vtt = uploaded_json
+            else:
+                raise ValueError(
+                    f"Unexpected upload response format: {uploaded_json}")
+        except Exception as e:
+            raise Exception(f"Upload succeeded but parsing failed: {e}")
+
+        subtitle_file_id = uploaded_vtt["id"]
+        print(f"{log_prefix} ✅ Uploaded VTT file (id={subtitle_file_id})")
+
+        # 6️⃣ Create subtitle entry in Strapi
+        print(f"{log_prefix} Creating subtitle entry in Strapi...")
+        subtitle_payload = {
+            "data": {
+                "subtitle": subtitle_file_id,
+                "audio": audio_id
+            }
+        }
+
+        headers = {
+            "Authorization": f"Bearer {STRAPI_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        create_res = requests.post(
+            f"{STRAPI_URL}/api/subtitles",
+            headers=headers,
+            json=subtitle_payload
+        )
+
+        if create_res.status_code not in (200, 201):
+            raise Exception(
+                f"Subtitle entry creation failed: {create_res.text}")
+
+        print(f"{log_prefix} ✅ Subtitle entry created successfully")
+
+        # 7️⃣ Update module with transcription text (directly send text content)
+        print(f"{log_prefix} Updating module with transcription text...")
+        update_payload = {
+            "module_id": module_doc_id,
+            "transcription_file": full_text,  # Send the text content directly
+            "content_type": "courseAudio"
+        }
+
+        update_url = f"{STRAPI_URL}/api/moduleContent/unifiedTranscription"
+
+        update_res = requests.put(
+            update_url,
+            headers=headers,
+            json=update_payload
+        )
+
+        # 7️⃣ Cleanup after success
+        background_tasks.add_task(cleanup_files, [temp_audio_path, vtt_path])
+
+        # 8️⃣ Return success JSON
+        return JSONResponse({
+            "success": True,
+            "subtitle_file": uploaded_vtt,
+            "subtitle_entry": create_res.json(),
+            "module_update": update_res.json(),
+            "transcription_text_length": len(full_text)
+        })
+
+    except Exception as e:
+        print(f"{log_prefix} ❌ Error: {e}")
+        cleanup_files([temp_audio_path, vtt_path])
+        raise HTTPException(
+            status_code=500, detail=f"Transcription failed: {e}")
