@@ -60,11 +60,11 @@ origin_configs = {
     },
     "http://localhost:8080": {
         "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
-        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
+        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "5d7fa9bcabe02db85c0b4cccf84d14a378e55c2d979f3e02a357a5de01a23c8a947aa863cd0e58d3d238c1d4caa00d106d76a3c8c1534cc574a4310fcb10835e1c330002a83b21835ad9625263874efae6a659d68433a59776541fba96ef6ba666ae48d11359915c8bc11b9ed52c04e0bf261e9a114a5c83f5c430ee8a02ae71"),
     },
     "http://localhost:1337": {
         "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
-        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "cb32a40733b8fc37c8c3343084c5b9292ddda8ebb46204e8ed864c3c7a8a73344f636330a63c4fba79946ad29c853131efbdcc5892dca4ec158c14ef4a506899eedc445e533a7abb0b9dcd8d62377ce8f7f7a77977750e2f0a01090e5ff9c1c19d2828c3606dabec2c70314f7ca9ca144bd57aa0a5d0b92670e71c88c760d189"),
+        "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "5d7fa9bcabe02db85c0b4cccf84d14a378e55c2d979f3e02a357a5de01a23c8a947aa863cd0e58d3d238c1d4caa00d106d76a3c8c1534cc574a4310fcb10835e1c330002a83b21835ad9625263874efae6a659d68433a59776541fba96ef6ba666ae48d11359915c8bc11b9ed52c04e0bf261e9a114a5c83f5c430ee8a02ae71"),
     },
 }
 
@@ -449,10 +449,10 @@ def cleanup_files(file_paths: list[str]):
 async def transcribe_video(
     request: Request,
     background_tasks: BackgroundTasks,
-    module_doc_id: str = Body(...),
     video_url: str = Body(...),
 ):
     log_prefix = "[🎬 Video Transcription]"
+    print(f"{log_prefix} video_url: {video_url}")
     origin = request.headers.get("origin")
     config = get_strapi_config(origin)
 
@@ -463,7 +463,6 @@ async def transcribe_video(
             status_code=400, detail=f"Invalid or unsupported origin: {origin}")
 
     STRAPI_URL = config["STRAPI_URL"]
-    STRAPI_TOKEN = config["STRAPI_TOKEN"]
 
     temp_dir = "temp_video"
     os.makedirs(temp_dir, exist_ok=True)
@@ -497,32 +496,8 @@ async def transcribe_video(
         print(f"{log_prefix} Transcribing audio...")
         transcription_text = transcribe_audio(temp_audio_path)
 
-        # 4️⃣ Save transcription as .txt
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(transcription_text)
-
-        # 5️⃣ Upload transcription .txt file to Strapi
-        print(f"{log_prefix} Uploading transcription to Strapi...")
-        with open(txt_path, "rb") as f:
-            files = {"files": (os.path.basename(txt_path), f, "text/plain")}
-            headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
-            upload_res = requests.post(
-                f"{STRAPI_URL}/api/upload", headers=headers, files=files)
-
-        if upload_res.status_code not in (200, 201):
-            raise Exception(f"Upload failed: {upload_res.text}")
-
-        uploaded_json = upload_res.json()
-        uploaded_file = uploaded_json[0] if isinstance(
-            uploaded_json, list) else uploaded_json
-        file_id_uploaded = uploaded_file["id"]
-        print(f"{log_prefix} ✅ Uploaded transcription file (id={file_id_uploaded})")
-
-        # 6️⃣ Update Strapi module content
-        print(f"{log_prefix} Updating module {module_doc_id} in Strapi...")
         update_payload = {
-            "module_id": module_doc_id,
-            "transcription_file": file_id_uploaded,
+            "transcription_file": transcription_text,
             "content_type": "video"
         }
 
@@ -533,9 +508,9 @@ async def transcribe_video(
 
         if update_res.status_code not in (200, 201):
             raise Exception(
-                f"Module update failed: {update_res.status_code} -> {update_res.text}")
+                f"Transcription failed: {update_res.status_code} -> {update_res.text}")
 
-        print(f"{log_prefix} ✅ Module updated successfully in Strapi")
+        print(f"{log_prefix} ✅ Transcription exported successfully")
 
         # 7️⃣ Cleanup
         background_tasks.add_task(
@@ -544,8 +519,7 @@ async def transcribe_video(
         return JSONResponse(
             {
                 "success": True,
-                "transcription_file": file_id_uploaded,
-                "module_updated": True,
+                "transcription_file": transcription_text,
             }
         )
 
@@ -786,7 +760,6 @@ async def transcribe_course_audio_api(
     background_tasks: BackgroundTasks,
     audio_url: str = Body(...),
     audio_id: str = Body(...),
-    module_doc_id: str = Body(...),
     model_size: str = Body("base"),
     language: Optional[str] = Body(None),
     task: str = Body("transcribe")
@@ -918,7 +891,6 @@ async def transcribe_course_audio_api(
         # 7️⃣ Update module with transcription text (directly send text content)
         print(f"{log_prefix} Updating module with transcription text...")
         update_payload = {
-            "module_id": module_doc_id,
             "transcription_file": full_text,  # Send the text content directly
             "content_type": "courseAudio"
         }
@@ -939,7 +911,7 @@ async def transcribe_course_audio_api(
             "success": True,
             "subtitle_file": uploaded_vtt,
             "subtitle_entry": create_res.json(),
-            "module_update": update_res.json(),
+            "transcription_file": full_text,
             "transcription_text_length": len(full_text)
         })
 
