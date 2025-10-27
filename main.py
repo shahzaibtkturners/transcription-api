@@ -66,6 +66,7 @@ origin_configs = {
         "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
         "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "5d7fa9bcabe02db85c0b4cccf84d14a378e55c2d979f3e02a357a5de01a23c8a947aa863cd0e58d3d238c1d4caa00d106d76a3c8c1534cc574a4310fcb10835e1c330002a83b21835ad9625263874efae6a659d68433a59776541fba96ef6ba666ae48d11359915c8bc11b9ed52c04e0bf261e9a114a5c83f5c430ee8a02ae71"),
     },
+ 
 }
 
 # Load Whisper model
@@ -539,107 +540,36 @@ async def transcribe_video(
 async def extract_slides_text(
     request: Request,
     background_tasks: BackgroundTasks,
-    module_doc_id: str = Body(..., embed=True)
+    slide_urls: list[str] = Body(..., embed=True)
 ):
     log_prefix = "[🖼️ Slides Text Extraction]"
-    origin = request.headers.get("origin")
-    config = get_strapi_config(origin)
-
-    print(f"{log_prefix} Started for module_doc_id: {module_doc_id} | Origin: {origin}")
-
-    if not config:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid or unsupported origin: {origin}")
-
-    STRAPI_URL = config["STRAPI_URL"]
-    STRAPI_TOKEN = config["STRAPI_TOKEN"]
+    
+    print(f"{log_prefix} Started with {len(slide_urls)} slides")
 
     temp_dir = "temp_slides"
     os.makedirs(temp_dir, exist_ok=True)
     file_id = str(uuid.uuid4())
+    downloaded_files = []
 
     try:
-        # 1️⃣ Fetch module data from Strapi using module_doc_id with deep populate
-        print(f"{log_prefix} Fetching module data from Strapi using module_doc_id...")
-        headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
-
-        # Single API call with deep populate for slides-module and its slides
-        module_res = requests.get(
-            f"{STRAPI_URL}/api/modules/{module_doc_id}",
-            headers=headers,
-            params={
-                "populate[moduleContent][on][slides-module.slides-module][populate]": "*"
-            }
-        )
-
-        if module_res.status_code != 200:
-            raise HTTPException(
-                status_code=404, detail=f"Failed to fetch module: {module_res.text}")
-
-        print(f"{log_prefix} Module fetch response data is fetched")
-        module_data = module_res.json().get("data", {})
-
-        if not module_data:
-            raise HTTPException(
-                status_code=404, detail=f"No module found with documentId: {module_doc_id}")
-
-        # The actual record ID for later updates
-        module_id = module_data.get("id")
-        print(f"{log_prefix} Found module with record ID: {module_id}")
-
-        # 2️⃣ Find slides-module component in moduleContent
-        slides_component = None
-        module_content = module_data.get("moduleContent", [])
-
-        print(f"{log_prefix} Searching for slides-module component...",
-              [comp.get("__component") for comp in module_content])
-
-        for component in module_content:
-            if component.get("__component") == "slides-module.slides-module":
-                slides_component = component
-                break
-
-        if not slides_component:
-            raise HTTPException(
-                status_code=404, detail="No slides-module component found in this module")
-
-        # 3️⃣ Get slides (images) directly from the slides component
-        slides = slides_component.get("slides", [])
-
-        if not slides:
-            raise HTTPException(
-                status_code=404, detail="No slides found in slides-module component")
-
-        print(f"{log_prefix} Found {len(slides)} slides to process")
-
-        # 4️⃣ Process each slide and extract text
+        # Process each slide URL and extract text
         all_extracted_text = []
-        downloaded_files = []
 
-        for i, slide_data in enumerate(slides):
+        for i, image_url in enumerate(slide_urls):
             try:
-                # In Strapi v5, slide data is directly the image object
-                image_url = slide_data.get("url")
-
                 if not image_url:
-                    print(f"{log_prefix} ⚠️ No URL for slide {i+1}, skipping")
+                    print(f"{log_prefix} ⚠️ Empty URL for slide {i+1}, skipping")
                     continue
 
-                # Construct full image URL if it's a relative path
-                if image_url.startswith("/"):
-                    image_url = f"{STRAPI_URL}{image_url}"
-
-                print(
-                    f"{log_prefix} Processing slide {i+1}/{len(slides)}: {image_url}")
+                print(f"{log_prefix} Processing slide {i+1}/{len(slide_urls)}: {image_url}")
 
                 # Download image
-                image_filename = f"slide_{i+1}_{os.path.basename(image_url)}"
+                image_filename = f"slide_{i+1}_{file_id}_{os.path.basename(image_url)}"
                 temp_image_path = os.path.join(temp_dir, image_filename)
 
                 image_res = requests.get(image_url, stream=True, timeout=30)
                 if image_res.status_code != 200:
-                    print(
-                        f"{log_prefix} ⚠️ Failed to download slide {i+1}, skipping")
+                    print(f"{log_prefix} ⚠️ Failed to download slide {i+1}, skipping")
                     continue
 
                 with open(temp_image_path, "wb") as f:
@@ -656,8 +586,6 @@ async def extract_slides_text(
                 if cleaned_text and cleaned_text != "No text found in image.":
                     all_extracted_text.append({
                         "slide_number": i + 1,
-                        "image_id": slide_data.get("id"),
-                        "image_name": slide_data.get("name", f"slide_{i+1}"),
                         "extracted_text": cleaned_text
                     })
                     print(f"{log_prefix} ✅ Extracted text from slide {i+1}")
@@ -668,71 +596,24 @@ async def extract_slides_text(
                 print(f"{log_prefix} ❌ Error processing slide {i+1}: {e}")
                 continue
 
-        # 5️⃣ Combine all extracted text
+        # Combine all extracted text
         if not all_extracted_text:
             raise HTTPException(
                 status_code=404, detail="No text could be extracted from any slides")
 
         combined_text = "\n\n".join([
-            f"Slide {item['slide_number']} ({item['image_name']}):\n{item['extracted_text']}"
+            f"Slide {item['slide_number']}:\n{item['extracted_text']}"
             for item in all_extracted_text
         ])
 
-        # 6️⃣ Save combined text as .txt file
-        txt_filename = f"slides_text_{module_doc_id}_{file_id}.txt"
-        txt_path = os.path.join(temp_dir, txt_filename)
-
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(combined_text)
-
-        downloaded_files.append(txt_path)
-
-        # 7️⃣ Upload text file to Strapi
-        print(f"{log_prefix} Uploading extracted text to Strapi...")
-        with open(txt_path, "rb") as f:
-            files = {"files": (txt_filename, f, "text/plain")}
-            headers = {"Authorization": f"Bearer {STRAPI_TOKEN}"}
-            upload_res = requests.post(
-                f"{STRAPI_URL}/api/upload", headers=headers, files=files)
-
-        if upload_res.status_code not in (200, 201):
-            raise Exception(f"Upload failed: {upload_res.text}")
-
-        uploaded_json = upload_res.json()
-        uploaded_file = uploaded_json[0] if isinstance(
-            uploaded_json, list) else uploaded_json
-        text_file_id = uploaded_file["id"]
-        print(f"{log_prefix} ✅ Uploaded text file (id={text_file_id})")
-
-        # 8️⃣ Update module with extracted text file reference using the record ID
-        print(f"{log_prefix} Updating module with extracted text...")
-        update_payload = {
-            "module_id": module_doc_id,  # Use the record ID for the update
-            "transcription_file": text_file_id,
-            "content_type": "slides"
-        }
-
-        update_url = f"{STRAPI_URL}/api/moduleContent/unifiedTranscription"
-
-        update_res = requests.put(
-            update_url, json=update_payload)
-
-        if update_res.status_code not in (200, 201):
-            raise Exception(
-                f"Module update failed: {update_res.status_code} -> {update_res.text}")
-
-        print(f"{log_prefix} ✅ Module updated successfully with slides text")
-
-        # 9️⃣ Cleanup temporary files
+        # Cleanup temporary files in background
         background_tasks.add_task(cleanup_files, downloaded_files)
 
         return JSONResponse({
             "success": True,
             "slides_processed": len(all_extracted_text),
-            "total_slides": len(slides),
-            "text_file_id": text_file_id,
-            "module_doc_id": module_doc_id,
-            "module_record_id": module_id,
+            "total_slides": len(slide_urls),
+            "transcription": combined_text,
             "extracted_text_summary": {
                 "total_slides_with_text": len(all_extracted_text),
                 "slides": all_extracted_text
@@ -744,15 +625,9 @@ async def extract_slides_text(
     except Exception as e:
         print(f"{log_prefix} ❌ Error: {e}")
         # Cleanup on error
-        for file_path in downloaded_files:
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except:
-                    pass
+        cleanup_files(downloaded_files)
         raise HTTPException(
             status_code=500, detail=f"Slides text extraction failed: {e}")
-
 
 @app.post("/transcribe-course-audio")
 async def transcribe_course_audio_api(
