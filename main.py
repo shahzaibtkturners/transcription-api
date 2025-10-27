@@ -46,6 +46,8 @@ allowed_origins = [
     "http://localhost:8080",
     "http://localhost:1337",
     "https://jon.voxento.com",
+    "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
+    "https://voxento-backend-778d4071d912.herokuapp.com"
 ]
 
 # ✅ Origin-specific Strapi configuration
@@ -54,7 +56,15 @@ origin_configs = {
         "STRAPI_URL": "https://voxento-backend-778d4071d912.herokuapp.com",
         "STRAPI_TOKEN": "a5eab6606a5a41d7d2d74004f2cd61ad3799c15d24d042286c22c324ce2ba44451b465ee0d12fbf645fcecb05744b5fff1e0948b62f340b2194dfd814ccff08df5579ed617a820ba40b84e4e65059c063ec1893595606552b200787a06448cdd8d4329f1957249c4e5c481eeff5ea95dfdbe66588411ec6cc1409c955ee786ad",
     },
+    "https://voxento-backend-778d4071d912.herokuapp.com": {
+        "STRAPI_URL": "https://voxento-backend-778d4071d912.herokuapp.com",
+        "STRAPI_TOKEN": "a5eab6606a5a41d7d2d74004f2cd61ad3799c15d24d042286c22c324ce2ba44451b465ee0d12fbf645fcecb05744b5fff1e0948b62f340b2194dfd814ccff08df5579ed617a820ba40b84e4e65059c063ec1893595606552b200787a06448cdd8d4329f1957249c4e5c481eeff5ea95dfdbe66588411ec6cc1409c955ee786ad",
+    },
     "https://jon.voxento.com": {
+        "STRAPI_URL": "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
+        "STRAPI_TOKEN": "05936d0fe48bd7c3ac95d982484f8f016032c49b9c915d458d6ba2e7a5274acce770bfcd2b0260b3c8051b5bc0f2bd4db1c854c9a1a239377689b39bc20a9d1ca47e8c72fe9814ca703693ee9ff288b0ef2dbae44fa921a6f7e8165699f472123ff245a780f8736aa512342cf63211d27e7993fea464d8353305b17bb3f4ea21",
+    },
+    "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com": {
         "STRAPI_URL": "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
         "STRAPI_TOKEN": "05936d0fe48bd7c3ac95d982484f8f016032c49b9c915d458d6ba2e7a5274acce770bfcd2b0260b3c8051b5bc0f2bd4db1c854c9a1a239377689b39bc20a9d1ca47e8c72fe9814ca703693ee9ff288b0ef2dbae44fa921a6f7e8165699f472123ff245a780f8736aa512342cf63211d27e7993fea464d8353305b17bb3f4ea21",
     },
