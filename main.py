@@ -497,15 +497,57 @@ async def transcribe_video(
 
         # 2️⃣ Extract audio
         print(f"{log_prefix} Extracting audio with ffmpeg...")
-        subprocess.run(
-            ["ffmpeg", "-i", temp_video_path, "-vn", "-acodec",
-                "pcm_s16le", "-ar", "16000", temp_audio_path],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["ffmpeg", "-i", temp_video_path, "-vn", "-acodec",
+                    "pcm_s16le", "-ar", "16000", temp_audio_path],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"{log_prefix} ⚠️ FFmpeg error: {e.stderr}")
+            # Check if the error is due to no audio stream
+            if "does not contain any stream" in e.stderr or "no audio" in e.stderr.lower():
+                print(f"{log_prefix} ⚠️ No audio stream found in video")
+                background_tasks.add_task(
+                    cleanup_files, [temp_video_path, temp_audio_path, txt_path])
+                return JSONResponse({
+                    "success": True,
+                    "transcription_file": "",
+                    "message": "No audio found in this video",
+                    "has_audio": False
+                })
+            raise
+
+        # Check if audio file was created and has content
+        if not os.path.exists(temp_audio_path) or os.path.getsize(temp_audio_path) == 0:
+            print(f"{log_prefix} ⚠️ No audio extracted from video")
+            background_tasks.add_task(
+                cleanup_files, [temp_video_path, temp_audio_path, txt_path])
+            return JSONResponse({
+                "success": True,
+                "transcription_file": "",
+                "message": "No audio found in this video",
+                "has_audio": False
+            })
 
         # 3️⃣ Transcribe audio
         print(f"{log_prefix} Transcribing audio...")
         transcription_text = transcribe_audio(temp_audio_path)
+
+        # Check if transcription returned no speech
+        if transcription_text == "No speech detected." or not transcription_text.strip():
+            print(f"{log_prefix} ⚠️ No speech detected in video")
+            background_tasks.add_task(
+                cleanup_files, [temp_video_path, temp_audio_path, txt_path])
+            return JSONResponse({
+                "success": True,
+                "transcription_file": "",
+                "message": "No voice detected in this video",
+                "has_audio": True,
+                "has_speech": False
+            })
 
         update_payload = {
             "transcription_file": transcription_text,
@@ -531,6 +573,9 @@ async def transcribe_video(
             {
                 "success": True,
                 "transcription_file": transcription_text,
+                "message": "Transcription completed successfully",
+                "has_audio": True,
+                "has_speech": True
             }
         )
 
@@ -544,7 +589,6 @@ async def transcribe_video(
                     pass
         raise HTTPException(
             status_code=500, detail=f"Video transcription failed: {e}")
-
 
 @app.post("/extract-slides-text")
 async def extract_slides_text(
@@ -689,6 +733,18 @@ async def transcribe_course_audio_api(
             for chunk in audio_res.iter_content(chunk_size=8192):
                 f.write(chunk)
 
+        # Check if audio file has content
+        if not os.path.exists(temp_audio_path) or os.path.getsize(temp_audio_path) == 0:
+            print(f"{log_prefix} ⚠️ Downloaded audio file is empty")
+            background_tasks.add_task(cleanup_files, [temp_audio_path, vtt_path])
+            return JSONResponse({
+                "success": True,
+                "transcription_file": "",
+                "message": "No audio content found in this file",
+                "has_audio": False,
+                "has_speech": False
+            })
+
         # 2️⃣ Load Whisper model
         print(f"{log_prefix} Loading model: {model_size}")
         transcribe_model = get_model(model_size)
@@ -702,6 +758,18 @@ async def transcribe_course_audio_api(
         )
 
         segments_list = list(segments)
+
+        # Check if no segments were detected
+        if not segments_list:
+            print(f"{log_prefix} ⚠️ No speech detected in audio")
+            background_tasks.add_task(cleanup_files, [temp_audio_path, vtt_path])
+            return JSONResponse({
+                "success": True,
+                "transcription_file": "",
+                "message": "No voice detected in this audio",
+                "has_audio": True,
+                "has_speech": False
+            })
 
        # 4️⃣ Generate VTT file and collect full text
         print(f"{log_prefix} Generating VTT and collecting text...")
@@ -717,7 +785,19 @@ async def transcribe_course_audio_api(
 
         full_text = full_text.strip()
 
-        print(f"{log_prefix} full_text length: {full_text}")
+        # Check if transcription is empty or too short
+        if not full_text or len(full_text) < 3:
+            print(f"{log_prefix} ⚠️ No meaningful speech detected in audio")
+            background_tasks.add_task(cleanup_files, [temp_audio_path, vtt_path])
+            return JSONResponse({
+                "success": True,
+                "transcription_file": "",
+                "message": "No voice detected in this audio",
+                "has_audio": True,
+                "has_speech": False
+            })
+
+        print(f"{log_prefix} full_text length: {len(full_text)} characters")
 
         # 5️⃣ Upload VTT to Strapi
         print(f"{log_prefix} Uploading VTT to Strapi...")
@@ -788,16 +868,22 @@ async def transcribe_course_audio_api(
             json=update_payload
         )
 
-        # 7️⃣ Cleanup after success
+        if update_res.status_code not in (200, 201):
+            print(f"{log_prefix} ⚠️ Module update failed: {update_res.status_code} -> {update_res.text}")
+
+        # 8️⃣ Cleanup after success
         background_tasks.add_task(cleanup_files, [temp_audio_path, vtt_path])
 
-        # 8️⃣ Return success JSON
+        # 9️⃣ Return success JSON
         return JSONResponse({
             "success": True,
             "subtitle_file": uploaded_vtt,
             "subtitle_entry": create_res.json(),
             "transcription_file": full_text,
-            "transcription_text_length": len(full_text)
+            "transcription_text_length": len(full_text),
+            "message": "Transcription completed successfully",
+            "has_audio": True,
+            "has_speech": True
         })
 
     except Exception as e:
