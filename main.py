@@ -50,7 +50,8 @@ allowed_origins = [
     "https://jon.voxento.com",
     "https://voxento-backend-staging-ed1cc9fc8b8e.herokuapp.com",
     "https://voxento-backend-778d4071d912.herokuapp.com",
-    "http://host.docker.internal:3000"
+    "http://host.docker.internal:3000",
+    "https://slide-conversion.tkturners.com"
 ]
 
 # ✅ Origin-specific Strapi configuration
@@ -60,6 +61,10 @@ origin_configs = {
         "STRAPI_TOKEN": "a5eab6606a5a41d7d2d74004f2cd61ad3799c15d24d042286c22c324ce2ba44451b465ee0d12fbf645fcecb05744b5fff1e0948b62f340b2194dfd814ccff08df5579ed617a820ba40b84e4e65059c063ec1893595606552b200787a06448cdd8d4329f1957249c4e5c481eeff5ea95dfdbe66588411ec6cc1409c955ee786ad",
     },
     "https://voxento-backend-778d4071d912.herokuapp.com": {
+        "STRAPI_URL": "https://voxento-backend-778d4071d912.herokuapp.com",
+        "STRAPI_TOKEN": "a5eab6606a5a41d7d2d74004f2cd61ad3799c15d24d042286c22c324ce2ba44451b465ee0d12fbf645fcecb05744b5fff1e0948b62f340b2194dfd814ccff08df5579ed617a820ba40b84e4e65059c063ec1893595606552b200787a06448cdd8d4329f1957249c4e5c481eeff5ea95dfdbe66588411ec6cc1409c955ee786ad",
+    },
+    "https://slide-conversion.tkturners.com": {
         "STRAPI_URL": "https://voxento-backend-778d4071d912.herokuapp.com",
         "STRAPI_TOKEN": "a5eab6606a5a41d7d2d74004f2cd61ad3799c15d24d042286c22c324ce2ba44451b465ee0d12fbf645fcecb05744b5fff1e0948b62f340b2194dfd814ccff08df5579ed617a820ba40b84e4e65059c063ec1893595606552b200787a06448cdd8d4329f1957249c4e5c481eeff5ea95dfdbe66588411ec6cc1409c955ee786ad",
     },
@@ -83,6 +88,7 @@ origin_configs = {
         "STRAPI_URL": os.getenv("STRAPI_URL", "http://localhost:1337"),
         "STRAPI_TOKEN": os.getenv("STRAPI_TOKEN", "5d7fa9bcabe02db85c0b4cccf84d14a378e55c2d979f3e02a357a5de01a23c8a947aa863cd0e58d3d238c1d4caa00d106d76a3c8c1534cc574a4310fcb10835e1c330002a83b21835ad9625263874efae6a659d68433a59776541fba96ef6ba666ae48d11359915c8bc11b9ed52c04e0bf261e9a114a5c83f5c430ee8a02ae71"),
     },
+    
  
 }
 
