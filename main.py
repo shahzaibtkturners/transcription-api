@@ -229,7 +229,7 @@ def extract_text_from_csv(csv_path: str):
             status_code=500, detail="CSV text extraction failed")
 
 def update_strapi_progress(strapi_url: str, token: str, record_id: str, percent: int, status: Optional[str] = None):
-    print(f"data provided to function: {strapi_url}, {token}, {record_id}, {percent}, {status}")
+    print(f"data provided: {strapi_url}, {token}, {record_id}, {percent}, {status}")
     try:
         url = f"{strapi_url}/api/upload-records/{record_id}"
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
