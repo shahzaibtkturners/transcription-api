@@ -778,7 +778,7 @@ async def extract_slides_text(
         # Local debounce state to avoid sending too many progress requests in tight loops
         local_last_send = 0.0
         local_last_percent = -1
-        local_min_interval = 3.0  # seconds between non-critical sends for slides
+        local_min_interval = 5.0  # seconds between non-critical sends for slides
         local_delta_percent = 8    # percent jump required to force a send sooner
 
         def send_progress_local(percent: int, status: Optional[str] = None, force: bool = False):
