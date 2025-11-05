@@ -7,6 +7,8 @@ import uuid
 import torch
 import shutil
 import subprocess
+import threading
+import time
 from faster_whisper import WhisperModel
 from fastapi import Body, FastAPI, Request, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -234,8 +236,13 @@ def extract_text_from_csv(csv_path: str):
         raise HTTPException(
             status_code=500, detail="CSV text extraction failed")
 
-def update_strapi_progress(strapi_url: str, token: str, record_id: str, percent: int, status: Optional[str] = None):
-    print(f"data provided: {strapi_url}, {token}, {record_id}, {percent}, {status}")
+# In-memory throttling state to avoid spamming Strapi with too many updates
+_progress_lock = threading.Lock()
+_progress_state: Dict[str, Dict] = {}
+
+
+def _send_progress(strapi_url: str, token: str, record_id: str, percent: int, status: Optional[str] = None):
+    """Sends the HTTP PUT to Strapi. Runs in a background thread to avoid blocking."""
     try:
         url = f"{strapi_url}/api/upload-records/{record_id}"
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -244,9 +251,72 @@ def update_strapi_progress(strapi_url: str, token: str, record_id: str, percent:
             payload["data"]["transcriptionStage"] = status
         res = requests.put(url, headers=headers, json=payload, timeout=10)
         if res.status_code not in (200, 201):
-            print(f"Warning: progress update returned {res.status_code} -> {res.text}")
+            logger.warning(f"Warning: progress update returned {res.status_code} -> {res.text}")
     except Exception as e:
-        print(f"Failed to update progress to Strapi: {e}")
+        logger.warning(f"Failed to update progress to Strapi: {e}")
+
+
+def update_strapi_progress(strapi_url: str, token: str, record_id: str, percent: int, status: Optional[str] = None, force: bool = False):
+    """Rate-limited progress updates to Strapi.
+
+    Behavior:
+    - If required fields are missing, returns immediately.
+    - Sends immediately for critical statuses (e.g., 'failed', 'completed').
+    - Otherwise, only sends if percent increased by delta_percent OR min_interval seconds elapsed since last send.
+    - Runs the actual HTTP request in a background thread to avoid blocking the main request loop.
+
+    Keep this function lightweight and safe to call frequently from loops.
+    """
+    if not (strapi_url and token and record_id):
+        return
+
+    now = time.time()
+    key = str(record_id)
+
+    # Configurable thresholds (tweak if needed)
+    delta_percent_threshold = 8      # only send if percent increased by this much
+    min_interval_seconds = 5         # at most one non-critical update every N seconds
+
+    critical_statuses = {"failed", "completed", "error"}
+    is_critical = bool(status and status.lower() in critical_statuses)
+
+    with _progress_lock:
+        state = _progress_state.get(key, {"percent": -1, "status": None, "time": 0})
+        last_percent = state["percent"]
+        last_status = state["status"]
+        last_time = state["time"]
+
+        percent = int(max(0, min(100, percent)))
+
+        # Decide whether to send:
+        should_send = False
+
+        # 1) Critical statuses should always be sent immediately
+        if is_critical or force:
+            should_send = True
+
+        # 2) If status changed, send immediately
+        elif status != last_status and status is not None:
+            should_send = True
+
+        # 3) If percent jumped by threshold
+        elif percent - last_percent >= delta_percent_threshold:
+            should_send = True
+
+        # 4) If it's been a while since the last send (prevent stalling)
+        elif (now - last_time) >= min_interval_seconds:
+            should_send = True
+
+        # Update in-memory state to reflect decision so subsequent calls are throttled
+        if should_send:
+            _progress_state[key] = {"percent": percent, "status": status, "time": now}
+            # Send in background so callers don't block
+            threading.Thread(target=_send_progress, args=(strapi_url, token, record_id, percent, status), daemon=True).start()
+        else:
+            # If we didn't send, still keep the highest percent we've seen (so we can send later)
+            if percent > last_percent:
+                _progress_state.setdefault(key, state)["percent"] = percent
+            logger.debug(f"Throttled progress update for {record_id}: last={last_percent}% now={percent}% status={status}")
 
 @app.post("/transcribe")
 async def process_file(file: UploadFile = File(...)):
@@ -705,9 +775,41 @@ async def extract_slides_text(
     downloaded_files = []
 
     try:
+        # Local debounce state to avoid sending too many progress requests in tight loops
+        local_last_send = 0.0
+        local_last_percent = -1
+        local_min_interval = 3.0  # seconds between non-critical sends for slides
+        local_delta_percent = 8    # percent jump required to force a send sooner
+
+        def send_progress_local(percent: int, status: Optional[str] = None, force: bool = False):
+            nonlocal local_last_send, local_last_percent
+            now = time.time()
+            percent = int(max(0, min(100, percent)))
+
+            # Always force critical or explicitly forced updates
+            critical = bool(status and status.lower() in {"failed", "completed", "error"})
+            if force or critical:
+                update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, percent, status=status, force=True)
+                local_last_send = now
+                local_last_percent = percent
+                return
+
+            # If percent jump is large enough, send immediately
+            if percent - local_last_percent >= local_delta_percent:
+                update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, percent, status=status)
+                local_last_send = now
+                local_last_percent = percent
+                return
+
+            # Otherwise, only send if min interval elapsed
+            if (now - local_last_send) >= local_min_interval:
+                update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, percent, status=status)
+                local_last_send = now
+                local_last_percent = percent
+
         # Initial progress
-        update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, 5, status="Starting slide extraction")
-        
+        send_progress_local(5, status="Starting slide extraction")
+
         # Process each slide URL and extract text
         all_extracted_text = []
         total_slides = len(slide_urls)
@@ -723,7 +825,7 @@ async def extract_slides_text(
 
                 # Calculate download progress: 5% to 50%
                 download_progress = 5 + int(((i + 1) / total_slides) * 45)
-                update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, download_progress, status=f"Downloading slide {i+1}/{total_slides}")
+                send_progress_local(download_progress, status=f"Downloading slide {i+1}/{total_slides}")
 
                 # Download image
                 image_filename = f"slide_{i+1}_{file_id}_{os.path.basename(image_url)}"
@@ -745,14 +847,14 @@ async def extract_slides_text(
                 continue
 
         # Update after all downloads complete
-        update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, 50, status="All slides downloaded")
+        send_progress_local(50, status="All slides downloaded")
 
         # Phase 2: Extract text from all downloaded slides (50% to 90%)
         for i, temp_image_path in enumerate(downloaded_files):
             try:
                 # Calculate extraction progress: 50% to 90%
                 extraction_progress = 50 + int(((i + 1) / len(downloaded_files)) * 40)
-                update_strapi_progress(STRAPI_URL, STRAPI_TOKEN, upload_record_id, extraction_progress, status=f"Extracting text from slide {i+1}/{len(downloaded_files)}")
+                send_progress_local(extraction_progress, status=f"Extracting text from slide {i+1}/{len(downloaded_files)}")
 
                 # Extract text from image using existing helper function
                 extracted_text = extract_text_from_image(temp_image_path)
