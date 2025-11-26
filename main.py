@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+
 # Global configuration
 MODEL_NAME = "base.en"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -43,6 +44,10 @@ ALLOWED_EXTENSIONS = {
     # Images
     ".jpg", ".jpeg", ".png", ".tiff"
 }
+
+# ✅ Consolidated temp directory configuration
+BASE_TEMP_DIR = os.getenv("TEMP_DIR", "/app/temp_data")
+os.makedirs(BASE_TEMP_DIR, exist_ok=True)
 
 # ✅ Allowed origins
 allowed_origins = [
@@ -323,8 +328,9 @@ async def process_file(file: UploadFile = File(...)):
     try:
         validate_file(file)
         safe_filename = sanitize_filename(file.filename)
-        os.makedirs("temp", exist_ok=True)
-        file_path = f"temp/{safe_filename}"
+        temp_dir = os.path.join(BASE_TEMP_DIR, "general")
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, safe_filename)
         with open(file_path, "wb") as f:
             f.write(await file.read())
 
@@ -573,7 +579,7 @@ async def transcribe_video(
     STRAPI_URL = config["STRAPI_URL"]
     STRAPI_TOKEN = config["STRAPI_TOKEN"]
 
-    temp_dir = "temp_video"
+    temp_dir = os.path.join(BASE_TEMP_DIR, "video")
     os.makedirs(temp_dir, exist_ok=True)
     file_id = str(uuid.uuid4())
 
@@ -769,7 +775,7 @@ async def extract_slides_text(
     STRAPI_URL = config["STRAPI_URL"]
     STRAPI_TOKEN = config["STRAPI_TOKEN"]
 
-    temp_dir = "temp_slides"
+    temp_dir = os.path.join(BASE_TEMP_DIR, "slides")
     os.makedirs(temp_dir, exist_ok=True)
     file_id = str(uuid.uuid4())
     downloaded_files = []
@@ -938,7 +944,7 @@ async def transcribe_course_audio_api(
     STRAPI_URL = config["STRAPI_URL"]
     STRAPI_TOKEN = config["STRAPI_TOKEN"]
 
-    temp_dir = "temp_audio"
+    temp_dir = os.path.join(BASE_TEMP_DIR, "audio")
     os.makedirs(temp_dir, exist_ok=True)
 
     file_id = str(uuid.uuid4())
